@@ -1,0 +1,4 @@
+.history
+.venv/**
+logs
+__pycache__
