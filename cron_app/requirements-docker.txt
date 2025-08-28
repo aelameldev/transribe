@@ -1,0 +1,34 @@
+# Core dependencies
+celery==5.3.6
+redis==5.0.6
+psycopg[binary]==3.2.9
+Flask==3.0.2
+python-dotenv==1.1.1
+asyncpg==0.30.0
+
+# Audio processing
+pydub==0.25.1
+soundfile==0.12.1
+librosa==0.10.1
+
+# ML/AI dependencies
+torch==2.1.0
+torchaudio==2.1.0
+transformers==4.36.0
+openai-whisper==20250625
+
+# Utilities
+requests==2.32.4
+tqdm==4.67.1
+packaging==25.0
+typing-extensions==4.14.1
+
+# Data handling
+PyYAML==6.0.2
+
+# Audio format support
+mutagen==1.47.0
+ffmpeg-python==0.2.0
+
+# Web scraping (if needed)
+yt-dlp==2025.6.30

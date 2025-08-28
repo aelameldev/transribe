@@ -6,4 +6,5 @@ models
 .DS_Store
 whisperx_env
 cron_app/cron_venv
-cron_app/celerybeat-schedule.db
+*.db
+*.mp3

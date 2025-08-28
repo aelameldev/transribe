@@ -8,7 +8,7 @@ celery_app.conf.update(
     beat_schedule={
         'process-pending-transcriptions': {
             'task': 'tasks.process_pending_transcriptions',
-            'schedule': 10.0,  # every 10 seconds
+            'schedule': 60.0,  # every 10 seconds
             'args': ()
             # 'schedule': crontab(sec='*/5'),  # every minute
         }
