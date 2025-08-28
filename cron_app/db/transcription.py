@@ -16,7 +16,7 @@ import yt_dlp
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/cmgmtDB")
-MODEL_ROOT = os.getenv("MODEL_ROOT", "/app/models")
+MODEL_ROOT = os.getenv("MODEL_ROOT", "/Users/aea/Workspace/builds/transribe/cron_app/models")
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
@@ -55,20 +55,65 @@ def sanitize_title(title: str, max_length: int = 50) -> str:
         title = title[:max_length].rstrip("_-")
     return title
 
+def get_youtube_video_id(url: str) -> str:
+    """Extract YouTube video ID from URL."""
+    # Handle various YouTube URL formats
+    patterns = [
+        r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
+        r'youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    
+    return None
+
+def find_existing_audio_file(output_path: str) -> str:
+    """Check for existing audio files in the given path with various extensions."""
+    audio_extensions = ['.mp3', '.wav', '.m4a', '.webm', '.ogg', '.flac']
+    base_name = "audio"
+    
+    for ext in audio_extensions:
+        audio_file = os.path.join(output_path, f"{base_name}{ext}")
+        if os.path.exists(audio_file) and os.path.getsize(audio_file) > 0:
+            logger.info(f"🔍 Found existing audio file: {audio_file}")
+            return audio_file
+    
+    return None
+
 def download_audio(youtube_url, base_output="audios") -> str:
-    """Download audio from YouTube into a sanitized title folder."""
+    """Download audio from YouTube into a sanitized title folder, or use existing file if found."""
+    # Extract YouTube video ID for consistent folder naming
+    video_id = get_youtube_video_id(youtube_url)
+    
     # Extract info first (without download)
     ydl_opts_info = {"quiet": True, "skip_download": True}
     with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
         info = ydl.extract_info(youtube_url, download=False)
         title = info.get("title", "audio")
 
-    # Sanitize title for folder name
-    folder_name = sanitize_title(title)
+    # Create folder name using both sanitized title and video ID for uniqueness
+    sanitized_title = sanitize_title(title)
+    if video_id:
+        folder_name = f"{sanitized_title}_{video_id}"
+    else:
+        folder_name = sanitized_title
+        
     output_path = os.path.join(base_output, folder_name)
-
+    
     # Ensure folder exists
     os.makedirs(output_path, exist_ok=True)
+
+    # Check if any audio file already exists in the folder
+    existing_audio = find_existing_audio_file(output_path)
+    if existing_audio:
+        logger.info(f"🔄 Using existing audio file: {existing_audio}")
+        return existing_audio
+
+    logger.info(f"📥 Downloading audio from: {youtube_url}")
+    audio_file_path = os.path.join(output_path, "audio.mp3")
 
     # Now download audio inside this folder
     ydl_opts = {
@@ -90,7 +135,8 @@ def download_audio(youtube_url, base_output="audios") -> str:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
 
-    return os.path.join(output_path, "audio.mp3")
+    logger.info(f"✅ Audio downloaded successfully: {audio_file_path}")
+    return audio_file_path
 
 def transcribe_with_whisperx(audio_path, model_size="small.en", device=None):
     """Transcribe audio with WhisperX and return transcript text."""
@@ -101,7 +147,7 @@ def transcribe_with_whisperx(audio_path, model_size="small.en", device=None):
 
     try:
         # Load ASR model
-        model = whisper.load_model(model_size=model_size, device=device, download_root=MODEL_ROOT)
+        model = whisper.load_model(name=model_size, device=device, download_root=MODEL_ROOT)
     except Exception as e:
         print(f"❌ Error loading model: {e}")
         print("🔄 Trying with SSL context disabled...")
