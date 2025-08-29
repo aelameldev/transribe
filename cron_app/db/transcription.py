@@ -11,6 +11,7 @@ import re
 import os
 import unicodedata
 import yt_dlp
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ SQL_MARK_PENDING = """
 
 SQL_MARK_DONE = """
     UPDATE transcriptions
-    SET status = 'DONE', transcript = %s
+    SET status = 'DONE', video_title = %s, transcript = %s, processing_time = %s
     WHERE id = %s
 """
 
@@ -110,7 +111,7 @@ def download_audio(youtube_url, base_output="audios") -> str:
     existing_audio = find_existing_audio_file(output_path)
     if existing_audio:
         logger.info(f"🔄 Using existing audio file: {existing_audio}")
-        return existing_audio
+        return [sanitized_title, existing_audio]
 
     logger.info(f"📥 Downloading audio from: {youtube_url}")
     audio_file_path = os.path.join(output_path, "audio.mp3")
@@ -136,7 +137,7 @@ def download_audio(youtube_url, base_output="audios") -> str:
         ydl.download([youtube_url])
 
     logger.info(f"✅ Audio downloaded successfully: {audio_file_path}")
-    return audio_file_path
+    return [sanitized_title, audio_file_path]
 
 def transcribe_with_whisperx(audio_path, model_size="small.en", device=None):
     """Transcribe audio with WhisperX and return transcript text."""
@@ -192,24 +193,31 @@ def process_requests(limit: int = 5):
                 for row in data:
                     req_id, url = row["id"], row["url"]
                     logger.info(f"Picked request id={req_id}, file={url}")
+                    
+                    # Start timing the processing
+                    start_time = time.time()
 
                     try:
                         if not validate_youtube_url(url):
                             logger.error(f"❌ Invalid YouTube URL for request id={req_id}: {url}")
                             continue
 
+                        # Download audio
+                        title, audio_path = download_audio(url)
+
                         # Mark as PENDING
                         cur.execute(SQL_MARK_PENDING, [req_id])
                         conn.commit()
 
-                        # Download audio
-                        audio_path = download_audio(url)
-
                         # Transcribe
                         transcript = transcribe_with_whisperx(audio_path)
 
-                        # Mark as DONE with transcript
-                        cur.execute(SQL_MARK_DONE, [transcript, req_id])
+                        # Calculate processing time in seconds
+                        processing_time = round(time.time() - start_time, 2)
+                        logger.info(f"⏱️ Processing took {processing_time} seconds for request id={req_id}")
+
+                        # Mark as DONE with transcript and processing time
+                        cur.execute(SQL_MARK_DONE, [title, transcript, processing_time, req_id])
                     except Exception as e:
                         logger.error(f"❌ Error processing request id={req_id}: {e}")
                         # Optionally, you could mark the request as FAILED in the DB here
