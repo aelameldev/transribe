@@ -18,7 +18,7 @@ import shutil
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/cmgmtDB")
-MODEL_ROOT = os.getenv("MODEL_ROOT", "/Users/aea/Workspace/builds/transribe/cron_app/models")
+MODEL_ROOT = os.getenv("MODEL_ROOT", "/Users/aea/Workspace/builds/transribe/models")
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
