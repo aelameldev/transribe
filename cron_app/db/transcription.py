@@ -12,6 +12,7 @@ import os
 import unicodedata
 import yt_dlp
 import time
+import shutil
 
 
 logger = logging.getLogger(__name__)
@@ -24,20 +25,20 @@ ssl._create_default_https_context = ssl._create_unverified_context
 SQL_FETCH_PROCESSING = """
     SELECT id, url
     FROM transcriptions
-    WHERE status = 'PROCESSING'
+    WHERE status = 'QUEUE_FOR_PROCESSING'
     ORDER BY id
     LIMIT %s
 """
 
-SQL_MARK_PENDING = """
+SQL_MARK_PROCESSING = """
     UPDATE transcriptions
-    SET status = 'PENDING'
+    SET status = 'PROCESSING', video_title = %s
     WHERE id = %s
 """
 
 SQL_MARK_DONE = """
     UPDATE transcriptions
-    SET status = 'DONE', video_title = %s, transcript = %s, processing_time = %s
+    SET status = 'COMPLETED', transcript = %s, processing_time = %s
     WHERE id = %s
 """
 
@@ -84,8 +85,11 @@ def find_existing_audio_file(output_path: str) -> str:
     
     return None
 
-def download_audio(youtube_url, base_output="audios") -> str:
-    """Download audio from YouTube into a sanitized title folder, or use existing file if found."""
+def download_audio(youtube_url, base_output="audios") -> tuple:
+    """Download audio from YouTube into a sanitized title folder, or use existing file if found.
+    Returns:
+        tuple: (sanitized_title, audio_file_path, folder_path)
+    """
     # Extract YouTube video ID for consistent folder naming
     video_id = get_youtube_video_id(youtube_url)
     
@@ -111,7 +115,7 @@ def download_audio(youtube_url, base_output="audios") -> str:
     existing_audio = find_existing_audio_file(output_path)
     if existing_audio:
         logger.info(f"🔄 Using existing audio file: {existing_audio}")
-        return [sanitized_title, existing_audio]
+        return (title, sanitized_title, existing_audio, output_path)
 
     logger.info(f"📥 Downloading audio from: {youtube_url}")
     audio_file_path = os.path.join(output_path, "audio.mp3")
@@ -137,7 +141,7 @@ def download_audio(youtube_url, base_output="audios") -> str:
         ydl.download([youtube_url])
 
     logger.info(f"✅ Audio downloaded successfully: {audio_file_path}")
-    return [sanitized_title, audio_file_path]
+    return (title,sanitized_title, audio_file_path, output_path)
 
 def transcribe_with_whisperx(audio_path, model_size="small.en", device=None):
     """Transcribe audio with WhisperX and return transcript text."""
@@ -169,6 +173,24 @@ def transcribe_with_whisperx(audio_path, model_size="small.en", device=None):
     transcript = " ".join([seg["text"].strip() for seg in segments])
 
     return transcript
+
+def cleanup_audio_folder(audio_path: str) -> bool:
+    """Delete the audio file and its containing folder safely."""
+    try:
+        # Get the folder containing the audio file
+        folder_path = os.path.dirname(audio_path)
+        
+        if os.path.exists(folder_path):
+            # Remove the entire folder and its contents
+            shutil.rmtree(folder_path)
+            logger.info(f"🗑️ Cleaned up audio folder: {folder_path}")
+            return True
+        else:
+            logger.warning(f"⚠️ Audio folder not found for cleanup: {folder_path}")
+            return False
+    except Exception as e:
+        logger.error(f"❌ Error cleaning up audio folder {folder_path}: {e}")
+        return False
 
 def validate_youtube_url(url: str) -> bool:
     """Validate if the given string is a YouTube link."""
@@ -203,10 +225,10 @@ def process_requests(limit: int = 5):
                             continue
 
                         # Download audio
-                        title, audio_path = download_audio(url)
+                        title, sanitize_title, audio_path, folder_path = download_audio(url)
 
-                        # Mark as PENDING
-                        cur.execute(SQL_MARK_PENDING, [req_id])
+                        # Mark as PROCESSING
+                        cur.execute(SQL_MARK_PROCESSING, [title, req_id])
                         conn.commit()
 
                         # Transcribe
@@ -217,7 +239,11 @@ def process_requests(limit: int = 5):
                         logger.info(f"⏱️ Processing took {processing_time} seconds for request id={req_id}")
 
                         # Mark as DONE with transcript and processing time
-                        cur.execute(SQL_MARK_DONE, [title, transcript, processing_time, req_id])
+                        cur.execute(SQL_MARK_DONE, [transcript, processing_time, req_id])
+                        
+                        # Clean up audio files after successful transcription
+                        cleanup_audio_folder(folder_path)
+                        
                     except Exception as e:
                         logger.error(f"❌ Error processing request id={req_id}: {e}")
                         # Optionally, you could mark the request as FAILED in the DB here

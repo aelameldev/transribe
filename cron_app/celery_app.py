@@ -13,5 +13,6 @@ celery_app.conf.update(
             # 'schedule': crontab(sec='*/5'),  # every minute
         }
     },
-    include=['tasks']
+    include=['tasks'],
+    broker_connection_retry_on_startup=True,
 )
