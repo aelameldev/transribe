@@ -17,7 +17,7 @@ import shutil
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/cmgmtDB")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/transcribeDB")
 MODEL_ROOT = os.getenv("MODEL_ROOT", "/Users/aea/Workspace/builds/transribe/models")
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -135,6 +135,14 @@ def download_audio(youtube_url, base_output="audios") -> tuple:
         ],
         "keepvideo": False,   # delete the original file after conversion
         "overwrites": True,   # overwrite if file already exists
+        'ratelimit': 1000000,  # bytes per second
+        'sleep_interval': 2,
+        'max_sleep_interval': 5,
+        'sleep_interval_requests': 1,  # delay between requests
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'headers': {
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:

@@ -8,3 +8,4 @@ whisperx_env
 cron_app/cron_venv
 *.db
 *.mp3
+.data
